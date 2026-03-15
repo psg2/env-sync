@@ -1,0 +1,48 @@
+{
+	"name": "@psg2/env-sync",
+	"version": "0.0.0",
+	"description": "Declarative env var management — 1Password → local files, Vercel, GitHub secrets",
+	"type": "module",
+	"bin": {
+		"env-sync": "./dist/cli.js"
+	},
+	"scripts": {
+		"build": "bun build src/cli.ts --outdir dist --target bun",
+		"dev": "bun src/cli.ts",
+		"lint": "bunx --bun biome check src/",
+		"lint:fix": "bunx --bun biome check --write src/",
+		"format": "bunx --bun biome format --write src/",
+		"test": "bun test",
+		"prepublishOnly": "bun run build"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/psg2/env-sync.git"
+	},
+	"homepage": "https://github.com/psg2/env-sync#readme",
+	"bugs": {
+		"url": "https://github.com/psg2/env-sync/issues"
+	},
+	"files": ["dist", "README.md", "LICENSE"],
+	"keywords": [
+		"env",
+		"environment",
+		"secrets",
+		"1password",
+		"vercel",
+		"github",
+		"dotenv",
+		"sync"
+	],
+	"license": "MIT",
+	"dependencies": {
+		"yaml": "^2.7.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@types/bun": "^1.2.4"
+	}
+}

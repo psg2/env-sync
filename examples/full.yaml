@@ -1,0 +1,98 @@
+# Full example — local dev, Vercel preview + production, GitHub Actions
+#
+# Demonstrates all three target types with explicit op:// references.
+
+groups:
+  # ── Local development ─────────────────────────────────────────────────
+  local-infra:
+    PORT: "3000"
+    DATABASE_URL: postgres://dev:dev@localhost:5432/myapp
+    AUTH_URL: http://localhost:3000
+    STORAGE_ENDPOINT: http://localhost:9000
+    STORAGE_BUCKET: uploads
+    STORAGE_ACCESS_KEY_ID: dev
+    STORAGE_SECRET_ACCESS_KEY: devdevdev
+    STORAGE_REGION: us-east-1
+    CRON_SECRET: dev-cron-secret
+
+  local-secrets:
+    AUTH_SECRET: op://Development/myapp/AUTH_SECRET
+    GOOGLE_CLIENT_ID: op://Development/myapp/GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_SECRET: op://Development/myapp/GOOGLE_CLIENT_SECRET
+    RESEND_API_KEY: op://Development/myapp/RESEND_API_KEY
+    POSTHOG_KEY: op://Development/myapp/POSTHOG_KEY
+    POSTHOG_HOST: op://Development/myapp/POSTHOG_HOST
+    SENTRY_DSN: op://Development/myapp/SENTRY_DSN
+    SENTRY_AUTH_TOKEN: op://Development/myapp/SENTRY_AUTH_TOKEN
+    STRIPE_SECRET_KEY: op://Development/myapp/STRIPE_SECRET_KEY
+    STRIPE_WEBHOOK_SECRET: op://Development/myapp/STRIPE_WEBHOOK_SECRET
+
+  # ── Vercel preview ────────────────────────────────────────────────────
+  preview-auth:
+    # Cross-vault references for shared OAuth proxy
+    AUTH_SECRET: op://Production/oauth-proxy/AUTH_SECRET
+    OAUTH_PROXY_URL: op://Production/oauth-proxy/URL
+    GOOGLE_CLIENT_ID: op://Development/shared/GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_SECRET: op://Development/shared/GOOGLE_CLIENT_SECRET
+
+  preview-services:
+    POSTHOG_KEY: op://Staging/myapp/POSTHOG_KEY
+    POSTHOG_HOST: op://Staging/myapp/POSTHOG_HOST
+    SENTRY_DSN: op://Staging/myapp/SENTRY_DSN
+    SENTRY_AUTH_TOKEN: op://Staging/myapp/SENTRY_AUTH_TOKEN
+    RESEND_API_KEY: op://Staging/myapp/RESEND_API_KEY
+    STORAGE_ENDPOINT: op://Staging/myapp/STORAGE_ENDPOINT
+    STORAGE_BUCKET: op://Staging/myapp/STORAGE_BUCKET
+    STORAGE_ACCESS_KEY_ID: op://Staging/myapp/STORAGE_ACCESS_KEY_ID
+    STORAGE_SECRET_ACCESS_KEY: op://Staging/myapp/STORAGE_SECRET_ACCESS_KEY
+
+  # ── Vercel production ─────────────────────────────────────────────────
+  prod-static:
+    AUTH_URL: https://myapp.example.com
+
+  prod-secrets:
+    AUTH_SECRET: op://Production/myapp/AUTH_SECRET
+    AUTH_API_KEY: op://Production/myapp/AUTH_API_KEY
+    GOOGLE_CLIENT_ID: op://Production/myapp/GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_SECRET: op://Production/myapp/GOOGLE_CLIENT_SECRET
+    DATABASE_URL: op://Production/myapp/DATABASE_URL
+    POSTHOG_KEY: op://Production/myapp/POSTHOG_KEY
+    POSTHOG_HOST: op://Production/myapp/POSTHOG_HOST
+    SENTRY_DSN: op://Production/myapp/SENTRY_DSN
+    SENTRY_AUTH_TOKEN: op://Production/myapp/SENTRY_AUTH_TOKEN
+    RESEND_API_KEY: op://Production/myapp/RESEND_API_KEY
+    CRON_SECRET: op://Production/myapp/CRON_SECRET
+    STRIPE_SECRET_KEY: op://Production/myapp/STRIPE_SECRET_KEY
+    STRIPE_WEBHOOK_SECRET: op://Production/myapp/STRIPE_WEBHOOK_SECRET
+    STORAGE_ENDPOINT: op://Production/myapp/STORAGE_ENDPOINT
+    STORAGE_BUCKET: op://Production/myapp/STORAGE_BUCKET
+    STORAGE_ACCESS_KEY_ID: op://Production/myapp/STORAGE_ACCESS_KEY_ID
+    STORAGE_SECRET_ACCESS_KEY: op://Production/myapp/STORAGE_SECRET_ACCESS_KEY
+
+  # ── GitHub Actions ────────────────────────────────────────────────────
+  ci-secrets:
+    SENTRY_AUTH_TOKEN: op://Development/myapp/SENTRY_AUTH_TOKEN
+    VERCEL_TOKEN: op://Development/myapp/VERCEL_TOKEN
+
+# ── Targets ──────────────────────────────────────────────────────────────
+targets:
+  local:
+    type: file
+    path: .env.local
+    groups: [local-infra, local-secrets]
+
+  vercel-preview:
+    type: vercel
+    environments: [preview]
+    groups: [preview-auth, preview-services]
+
+  vercel-prod:
+    type: vercel
+    environments: [production]
+    groups: [prod-static, prod-secrets]
+    redeploy: true  # redeploy latest production deployment after pushing
+
+  github:
+    type: github
+    secretType: actions
+    groups: [ci-secrets]

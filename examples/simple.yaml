@@ -1,0 +1,46 @@
+# Minimal example — local dev + Vercel production
+#
+# Run: env-sync              (all targets)
+# Run: env-sync local        (just .env.local)
+# Run: env-sync vercel-prod  (just Vercel production)
+# Run: env-sync --dry-run    (preview without changes)
+
+groups:
+  local-infra:
+    PORT: "3000"
+    DATABASE_URL: postgres://dev:dev@localhost:5432/myapp
+    STORAGE_ENDPOINT: http://localhost:9000
+    STORAGE_BUCKET: uploads
+    STORAGE_ACCESS_KEY_ID: dev
+    STORAGE_SECRET_ACCESS_KEY: devdevdev
+
+  local-secrets:
+    AUTH_SECRET: op://Development/myapp/AUTH_SECRET
+    GOOGLE_CLIENT_ID: op://Development/myapp/GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_SECRET: op://Development/myapp/GOOGLE_CLIENT_SECRET
+    RESEND_API_KEY: op://Development/myapp/RESEND_API_KEY
+
+  prod-static:
+    AUTH_URL: https://myapp.example.com
+
+  prod-secrets:
+    AUTH_SECRET: op://Production/myapp/AUTH_SECRET
+    GOOGLE_CLIENT_ID: op://Production/myapp/GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_SECRET: op://Production/myapp/GOOGLE_CLIENT_SECRET
+    RESEND_API_KEY: op://Production/myapp/RESEND_API_KEY
+    DATABASE_URL: op://Production/myapp/DATABASE_URL
+    STORAGE_ENDPOINT: op://Production/myapp/STORAGE_ENDPOINT
+    STORAGE_BUCKET: op://Production/myapp/STORAGE_BUCKET
+    STORAGE_ACCESS_KEY_ID: op://Production/myapp/STORAGE_ACCESS_KEY_ID
+    STORAGE_SECRET_ACCESS_KEY: op://Production/myapp/STORAGE_SECRET_ACCESS_KEY
+
+targets:
+  local:
+    type: file
+    path: .env.local
+    groups: [local-infra, local-secrets]
+
+  vercel-prod:
+    type: vercel
+    environments: [production]
+    groups: [prod-static, prod-secrets]
