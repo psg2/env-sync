@@ -64,12 +64,13 @@ function getVercelAuthToken(): string {
 	);
 }
 
-function getProjectInfo(configDir: string, override?: string): { projectId: string; teamId: string } {
+function getProjectInfo(
+	configDir: string,
+	override?: string,
+): { projectId: string; teamId: string } {
 	const path = resolve(configDir, ".vercel/project.json");
 	if (!existsSync(path)) {
-		throw new Error(
-			`.vercel/project.json not found at ${configDir}. Run \`vercel link\` first.`,
-		);
+		throw new Error(`.vercel/project.json not found at ${configDir}. Run \`vercel link\` first.`);
 	}
 	const data = JSON.parse(readFileSync(path, "utf8")) as {
 		projectId: string;
@@ -134,12 +135,7 @@ async function deleteEnvVar(
 	token: string,
 	envId: string,
 ): Promise<void> {
-	const res = await vercelApi(
-		"DELETE",
-		`/v9/projects/${projectId}/env/${envId}`,
-		teamId,
-		token,
-	);
+	const res = await vercelApi("DELETE", `/v9/projects/${projectId}/env/${envId}`, teamId, token);
 	if (!res.ok) {
 		throw new Error(`Delete env var ${envId} failed: ${res.status} ${JSON.stringify(res.body)}`);
 	}
@@ -151,20 +147,16 @@ async function createEnvVar(
 	token: string,
 	payload: { key: string; value: string; target: string[]; type?: string },
 ): Promise<void> {
-	const res = await vercelApi(
-		"POST",
-		`/v10/projects/${projectId}/env`,
-		teamId,
-		token,
-		{
-			key: payload.key,
-			value: payload.value,
-			target: payload.target,
-			type: payload.type ?? "encrypted",
-		},
-	);
+	const res = await vercelApi("POST", `/v10/projects/${projectId}/env`, teamId, token, {
+		key: payload.key,
+		value: payload.value,
+		target: payload.target,
+		type: payload.type ?? "encrypted",
+	});
 	if (!res.ok) {
-		throw new Error(`Create env var ${payload.key} failed: ${res.status} ${JSON.stringify(res.body)}`);
+		throw new Error(
+			`Create env var ${payload.key} failed: ${res.status} ${JSON.stringify(res.body)}`,
+		);
 	}
 }
 
@@ -237,9 +229,7 @@ export async function syncVercel(
 				});
 				console.log(`  ✓ ${v.key} [${env}]`);
 			} catch (err) {
-				errors.push(
-					`  ✗ ${v.key} [${env}]: ${err instanceof Error ? err.message : err}`,
-				);
+				errors.push(`  ✗ ${v.key} [${env}]: ${err instanceof Error ? err.message : err}`);
 			}
 		}
 	}
