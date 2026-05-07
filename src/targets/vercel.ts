@@ -25,11 +25,18 @@ export async function syncVercel(
 	for (const v of vars) {
 		for (const env of target.environments) {
 			try {
-				const args = ["env", "add", v.key, env, "--force"];
+				// Vercel CLI's "agent" / non-interactive mode (51.x+) refuses
+				// the legacy stdin+--force form and instead prints a structured
+				// `{status: "action_required"}` hint pointing at --value/--yes.
+				// Using --value puts the secret on argv (visible to local
+				// `ps aux` for the command's lifetime) which is the trade-off
+				// Vercel's CLI explicitly recommends. --yes also covers the
+				// "extend var to additional environments" prompt that fires
+				// when the same key already exists in another env.
+				const args = ["env", "add", v.key, env, "--value", v.value, "--yes"];
 				if (target.project) args.push("--project", target.project);
 
 				const proc = Bun.spawn(["vercel", ...args], {
-					stdin: new TextEncoder().encode(v.value),
 					stdout: "pipe",
 					stderr: "pipe",
 				});
