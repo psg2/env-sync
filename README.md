@@ -78,9 +78,11 @@ targets:
 
 #### Vercel
 
-Pushes vars to Vercel environment(s) via the Vercel REST API. Backs up current env vars before overwriting.
+Pushes vars to Vercel environment(s) via the Vercel REST API. Before overwriting, the current variables of each environment are backed up to `.env-sync-backups/vercel-<env>.<timestamp>.env`, in `KEY="value"` format. Sensitive variables can't be read back through the API (nor by `vercel env pull`), so the backup records only their key and type as a comment.
 
 Values resolved from `op://` references are stored as **Sensitive** variables (write-only on Vercel; the value can never be read back). Literal values stay as regular readable variables. Re-running the sync converts existing variables to the right type.
+
+With `redeploy: true`, the latest READY deployment of the environment is redeployed through the API — the same effect as `vercel redeploy`. Skipped for `development`, which has no deployments.
 
 ```yaml
 targets:
@@ -91,6 +93,8 @@ targets:
     project: my-app                     # Optional (uses linked project)
     redeploy: true                      # Optional (default: false)
 ```
+
+**Authentication:** the token is read from `VERCEL_TOKEN` first, then from the Vercel CLI auth store written by `vercel login` (e.g. `~/Library/Application Support/com.vercel.cli/auth.json` on macOS, `~/.local/share/com.vercel.cli/auth.json` on Linux, `%APPDATA%/com.vercel.cli/auth.json` on Windows). The project and team ids come from `.vercel/project.json`, created by `vercel link` (or written by hand with `projectId` and `orgId`). The `vercel` CLI itself is optional at runtime — it's only needed once, to produce the token and the linked project file.
 
 #### GitHub
 
@@ -125,10 +129,10 @@ Options:
 | Feature | Requires |
 |---------|----------|
 | 1Password secrets | [`op` CLI](https://developer.1password.com/docs/cli) + `op signin` |
-| Vercel targets | [`vercel` CLI](https://vercel.com/docs/cli) |
+| Vercel targets | `VERCEL_TOKEN` env var, or `vercel login` (CLI optional) |
 | GitHub targets | [`gh` CLI](https://cli.github.com) |
 
-The CLI checks for required tools before syncing and gives clear error messages.
+The CLI checks for `op` and `gh` before syncing and gives clear error messages; Vercel credentials are validated when the target runs.
 
 ## Examples
 
