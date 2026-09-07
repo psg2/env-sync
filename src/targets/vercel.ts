@@ -39,9 +39,8 @@ function getVercelAuthToken(): string {
 	if (fromEnv) return fromEnv;
 
 	// Standard locations per OS — same paths the Vercel CLI uses to
-	// store the token after `vercel login`. HOME is read at call time
-	// because Bun caches os.homedir() at startup.
-	const home = process.env.HOME || homedir();
+	// store the token after `vercel login`.
+	const home = homedir();
 	const candidates = [
 		// macOS
 		`${home}/Library/Application Support/com.vercel.cli/auth.json`,

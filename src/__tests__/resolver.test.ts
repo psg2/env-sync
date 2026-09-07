@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { collectVars, resolveSecrets } from "../resolver";
 import type { Config } from "../types";
 

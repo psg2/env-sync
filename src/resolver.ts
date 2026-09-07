@@ -1,3 +1,4 @@
+import { exec } from "./exec";
 import type { Config, ResolvedVar } from "./types";
 
 /**
@@ -76,15 +77,7 @@ async function resolveOpReferences(vars: ResolvedVar[]): Promise<OpResult[]> {
 	const template = vars.map((v) => `${v.key}=${v.value}`).join("\n");
 
 	try {
-		const proc = Bun.spawn(["op", "inject"], {
-			stdin: new TextEncoder().encode(template),
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		const stdout = await new Response(proc.stdout).text();
-		const stderr = await new Response(proc.stderr).text();
-		const exitCode = await proc.exited;
+		const { exitCode, stdout, stderr } = await exec("op", ["inject"], { input: template });
 
 		if (exitCode !== 0) {
 			return resolveOpReferencesIndividually(vars, stderr);
@@ -128,14 +121,7 @@ async function resolveOpReferencesIndividually(
 
 	for (const v of vars) {
 		try {
-			const proc = Bun.spawn(["op", "read", v.value], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-
-			const stdout = await new Response(proc.stdout).text();
-			const stderr = await new Response(proc.stderr).text();
-			const exitCode = await proc.exited;
+			const { exitCode, stdout, stderr } = await exec("op", ["read", v.value]);
 
 			if (exitCode !== 0) {
 				results.push({
