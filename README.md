@@ -78,7 +78,9 @@ targets:
 
 #### Vercel
 
-Pushes vars to Vercel environment(s) via the Vercel CLI. Backs up current env vars before overwriting.
+Pushes vars to Vercel environment(s) via the Vercel REST API. Backs up current env vars before overwriting.
+
+Values resolved from `op://` references are stored as **Sensitive** variables (write-only on Vercel; the value can never be read back). Literal values stay as regular readable variables. Re-running the sync converts existing variables to the right type.
 
 ```yaml
 targets:

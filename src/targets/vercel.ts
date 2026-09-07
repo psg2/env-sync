@@ -141,17 +141,30 @@ async function deleteEnvVar(
 	}
 }
 
+type VercelEnvType = "sensitive" | "encrypted";
+
+/**
+ * A value that came from a 1Password reference is a secret by definition, so
+ * it is stored as a Vercel "sensitive" variable: the value can never be read
+ * back through the dashboard, CLI or API. Literal values in env-sync.yaml
+ * (URLs, feature flags) stay "encrypted", Vercel's default readable type,
+ * so they remain inspectable and diffable.
+ */
+export function vercelEnvType(v: ResolvedVar): VercelEnvType {
+	return v.source.startsWith("op://") ? "sensitive" : "encrypted";
+}
+
 async function createEnvVar(
 	projectId: string,
 	teamId: string,
 	token: string,
-	payload: { key: string; value: string; target: string[]; type?: string },
+	payload: { key: string; value: string; target: string[]; type: VercelEnvType },
 ): Promise<void> {
 	const res = await vercelApi("POST", `/v10/projects/${projectId}/env`, teamId, token, {
 		key: payload.key,
 		value: payload.value,
 		target: payload.target,
-		type: payload.type ?? "encrypted",
+		type: payload.type,
 	});
 	if (!res.ok) {
 		throw new Error(
@@ -226,6 +239,7 @@ export async function syncVercel(
 					key: v.key,
 					value: v.value,
 					target: [env],
+					type: vercelEnvType(v),
 				});
 				console.log(`  ✓ ${v.key} [${env}]`);
 			} catch (err) {
