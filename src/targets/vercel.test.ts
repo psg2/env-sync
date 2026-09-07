@@ -1,8 +1,8 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { syncVercel } from "../targets/vercel";
 import type { ResolvedVar, VercelTarget } from "../types";
+import { syncVercel } from "./vercel";
 
 const TMP = join(import.meta.dirname ?? ".", ".tmp-test-vercel");
 const HOME = join(TMP, "home");
