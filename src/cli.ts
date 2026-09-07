@@ -171,12 +171,12 @@ async function checkPrerequisites(
 		return false;
 	});
 
-	const needsVercel = targets.some((t) => t.type === "vercel");
 	const needsGh = targets.some((t) => t.type === "github");
 
+	// The Vercel target talks to the REST API directly and validates its own
+	// auth, so only the 1Password and GitHub CLIs are checked here.
 	if (needsOp)
 		await assertCommand("op", "1Password CLI (https://developer.1password.com/docs/cli)");
-	if (needsVercel) await assertCommand("vercel", "Vercel CLI (npm i -g vercel)");
 	if (needsGh) await assertCommand("gh", "GitHub CLI (https://cli.github.com)");
 
 	// Check 1Password session

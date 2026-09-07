@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { ResolvedVar, SyncResult, VercelTarget } from "../types";
 
-// ── Why we don't use `vercel env add` from the CLI ──────────────────────────
+// ── Why we don't use the Vercel CLI at all ──────────────────────────────────
 // Vercel CLI 51.x has an "agent mode" that activates when invoked from a
-// non-TTY subprocess (which env-sync always is, via Bun.spawn). In that mode
+// non-TTY subprocess (which env-sync always is). In that mode
 // `vercel env add NAME preview --value V --yes` returns a structured JSON
 // hint on stdout —
 //   { "status": "action_required", "reason": "git_branch_required", ... }
@@ -15,14 +15,9 @@ import type { ResolvedVar, SyncResult, VercelTarget } from "../types";
 // populated weeks earlier and a fresh `env-sync preview` reported 21/21
 // success but added 0/21 vars.
 //
-// The CLI form that *should* work per `vercel env add --help` is
-// `vercel env add NAME preview --value V --yes` (omit gitbranch → "all
-// preview branches"), but agent mode rejects it anyway. Passing an
-// explicit gitbranch like `*` errors with `branch_not_found`.
-//
-// Workaround: skip the CLI for write paths and call Vercel's REST API
-// directly. Read paths (`vercel env pull`) work fine in agent mode and
-// we keep using the CLI there for backups.
+// Every operation (backup, write, redeploy) therefore goes through the REST
+// API. The CLI is only used indirectly: `vercel login` populates the auth
+// store we read the token from and `vercel link` writes .vercel/project.json.
 
 interface VercelEnvVar {
 	id: string;
@@ -33,14 +28,25 @@ interface VercelEnvVar {
 	type?: string;
 }
 
+interface VercelDeployment {
+	uid: string;
+	name: string;
+	url: string;
+}
+
 function getVercelAuthToken(): string {
+	const fromEnv = process.env.VERCEL_TOKEN;
+	if (fromEnv) return fromEnv;
+
 	// Standard locations per OS — same paths the Vercel CLI uses to
-	// store the token after `vercel login`.
+	// store the token after `vercel login`. HOME is read at call time
+	// because Bun caches os.homedir() at startup.
+	const home = process.env.HOME || homedir();
 	const candidates = [
 		// macOS
-		`${homedir()}/Library/Application Support/com.vercel.cli/auth.json`,
+		`${home}/Library/Application Support/com.vercel.cli/auth.json`,
 		// Linux (XDG default)
-		`${homedir()}/.local/share/com.vercel.cli/auth.json`,
+		`${home}/.local/share/com.vercel.cli/auth.json`,
 		// Linux (XDG_CONFIG_HOME)
 		process.env.XDG_CONFIG_HOME
 			? `${process.env.XDG_CONFIG_HOME}/com.vercel.cli/auth.json`
@@ -60,7 +66,7 @@ function getVercelAuthToken(): string {
 	}
 
 	throw new Error(
-		"Vercel auth token not found in any of the standard CLI store paths. Run `vercel login` first.",
+		"Vercel token not found. Set VERCEL_TOKEN, or run `vercel login` so the token is available in the CLI auth store.",
 	);
 }
 
@@ -88,16 +94,21 @@ function getProjectInfo(
 	return { projectId: data.projectId, teamId: data.orgId };
 }
 
+interface VercelClient {
+	projectId: string;
+	teamId: string;
+	token: string;
+}
+
 async function vercelApi(
+	client: VercelClient,
 	method: string,
 	endpoint: string,
-	teamId: string,
-	token: string,
 	body?: unknown,
 ): Promise<{ ok: boolean; status: number; body: unknown }> {
-	const url = `https://api.vercel.com${endpoint}${endpoint.includes("?") ? "&" : "?"}teamId=${encodeURIComponent(teamId)}`;
+	const url = `https://api.vercel.com${endpoint}${endpoint.includes("?") ? "&" : "?"}teamId=${encodeURIComponent(client.teamId)}`;
 	const headers: Record<string, string> = {
-		Authorization: `Bearer ${token}`,
+		Authorization: `Bearer ${client.token}`,
 	};
 	if (body !== undefined) headers["Content-Type"] = "application/json";
 
@@ -116,12 +127,11 @@ async function vercelApi(
 	return { ok: res.ok, status: res.status, body: parsed };
 }
 
-async function listExistingEnvVars(
-	projectId: string,
-	teamId: string,
-	token: string,
-): Promise<VercelEnvVar[]> {
-	const res = await vercelApi("GET", `/v9/projects/${projectId}/env`, teamId, token);
+async function listExistingEnvVars(client: VercelClient): Promise<VercelEnvVar[]> {
+	// decrypt=true returns readable values so the same listing serves both
+	// the backup and conflict detection. Sensitive variables come back
+	// without a value regardless.
+	const res = await vercelApi(client, "GET", `/v9/projects/${client.projectId}/env?decrypt=true`);
 	if (!res.ok) {
 		throw new Error(`Failed to list env vars: ${res.status} ${JSON.stringify(res.body)}`);
 	}
@@ -129,13 +139,8 @@ async function listExistingEnvVars(
 	return body.envs ?? [];
 }
 
-async function deleteEnvVar(
-	projectId: string,
-	teamId: string,
-	token: string,
-	envId: string,
-): Promise<void> {
-	const res = await vercelApi("DELETE", `/v9/projects/${projectId}/env/${envId}`, teamId, token);
+async function deleteEnvVar(client: VercelClient, envId: string): Promise<void> {
+	const res = await vercelApi(client, "DELETE", `/v9/projects/${client.projectId}/env/${envId}`);
 	if (!res.ok) {
 		throw new Error(`Delete env var ${envId} failed: ${res.status} ${JSON.stringify(res.body)}`);
 	}
@@ -155,12 +160,10 @@ export function vercelEnvType(v: ResolvedVar): VercelEnvType {
 }
 
 async function createEnvVar(
-	projectId: string,
-	teamId: string,
-	token: string,
+	client: VercelClient,
 	payload: { key: string; value: string; target: string[]; type: VercelEnvType },
 ): Promise<void> {
-	const res = await vercelApi("POST", `/v10/projects/${projectId}/env`, teamId, token, {
+	const res = await vercelApi(client, "POST", `/v10/projects/${client.projectId}/env`, {
 		key: payload.key,
 		value: payload.value,
 		target: payload.target,
@@ -170,6 +173,13 @@ async function createEnvVar(
 		throw new Error(
 			`Create env var ${payload.key} failed: ${res.status} ${JSON.stringify(res.body)}`,
 		);
+	}
+	// The endpoint accepts batches, so per-variable errors arrive inside a
+	// 201 response rather than as a non-2xx status.
+	const { failed } = res.body as { failed?: { error: { code?: string; message?: string } }[] };
+	if (failed && failed.length > 0) {
+		const reason = failed[0].error.message ?? failed[0].error.code ?? JSON.stringify(failed[0]);
+		throw new Error(`Create env var ${payload.key} failed: ${reason}`);
 	}
 }
 
@@ -188,23 +198,14 @@ export async function syncVercel(
 		return { target: name, type: "vercel", vars: vars.length, errors };
 	}
 
-	let token: string;
-	let projectId: string;
-	let teamId: string;
+	let client: VercelClient;
 	try {
-		token = getVercelAuthToken();
+		const token = getVercelAuthToken();
 		const info = getProjectInfo(configDir, target.project);
-		projectId = info.projectId;
-		teamId = info.teamId;
+		client = { token, projectId: info.projectId, teamId: info.teamId };
 	} catch (err) {
 		errors.push(`  ✗ Vercel API setup: ${err instanceof Error ? err.message : err}`);
 		return { target: name, type: "vercel", vars: vars.length, errors };
-	}
-
-	// Back up current env vars before overwriting. The pull command works
-	// fine in agent mode (it's read-only) so we keep the CLI here.
-	for (const env of target.environments) {
-		await backupVercelEnv(env, target.project, configDir);
 	}
 
 	// One round-trip to find existing entries that match key+target so we
@@ -212,10 +213,15 @@ export async function syncVercel(
 	// (key, target) overlap already exists).
 	let existing: VercelEnvVar[];
 	try {
-		existing = await listExistingEnvVars(projectId, teamId, token);
+		existing = await listExistingEnvVars(client);
 	} catch (err) {
 		errors.push(`  ✗ List env failed: ${err instanceof Error ? err.message : err}`);
 		return { target: name, type: "vercel", vars: vars.length, errors };
+	}
+
+	// Back up current env vars before overwriting.
+	for (const env of target.environments) {
+		backupVercelEnv(env, existing, configDir);
 	}
 
 	for (const v of vars) {
@@ -229,13 +235,13 @@ export async function syncVercel(
 					(e) => e.key === v.key && e.target.includes(env) && !e.gitBranch,
 				);
 				if (conflict) {
-					await deleteEnvVar(projectId, teamId, token, conflict.id);
+					await deleteEnvVar(client, conflict.id);
 					// Update local cache so the next loop iteration doesn't
 					// see it again (relevant when the same key is being
 					// pushed across multiple environments).
 					existing = existing.filter((e) => e.id !== conflict.id);
 				}
-				await createEnvVar(projectId, teamId, token, {
+				await createEnvVar(client, {
 					key: v.key,
 					value: v.value,
 					target: [env],
@@ -257,83 +263,82 @@ export async function syncVercel(
 		`  Done: ${succeeded}/${vars.length * target.environments.length} vars pushed to Vercel [${envLabel}]`,
 	);
 
-	// Redeploy if configured and no errors. CLI is fine here since it's
-	// just a list-and-redeploy round-trip; no env writes.
 	if (target.redeploy && errors.length === 0) {
 		for (const env of target.environments) {
-			await redeployVercel(env, target.project, errors);
+			await redeployVercel(client, env, errors);
 		}
 	}
 
 	return { target: name, type: "vercel", vars: vars.length, errors };
 }
 
-async function redeployVercel(
-	env: string,
-	project: string | undefined,
-	errors: string[],
-): Promise<void> {
+/**
+ * Redeploy the latest ready deployment of an environment, the same way
+ * `vercel redeploy` does: POST /v13/deployments with the source deployment id
+ * and `meta.action = "redeploy"`. Preview deployments have no `target`.
+ */
+async function redeployVercel(client: VercelClient, env: string, errors: string[]): Promise<void> {
+	if (env === "development") {
+		console.log("  Skipping redeploy [development]: environment has no deployments");
+		return;
+	}
+
 	console.log(`  Triggering redeploy [${env}]...`);
 
-	const listArgs = ["list", "--environment", env, "--format", "json", "--yes"];
-	if (project) listArgs.push("--project", project);
-
 	try {
-		const listProc = Bun.spawn(["vercel", ...listArgs], {
-			stdout: "pipe",
-			stderr: "pipe",
+		const query = new URLSearchParams({
+			projectId: client.projectId,
+			target: env,
+			state: "READY",
+			limit: "1",
 		});
-
-		const listStdout = await new Response(listProc.stdout).text();
-		const listExit = await listProc.exited;
-
-		if (listExit !== 0) {
-			const stderr = await new Response(listProc.stderr).text();
-			errors.push(`  ✗ Could not list deployments [${env}]: ${stderr.trim()}`);
+		const listRes = await vercelApi(client, "GET", `/v6/deployments?${query}`);
+		if (!listRes.ok) {
+			errors.push(
+				`  ✗ Could not list deployments [${env}]: ${listRes.status} ${JSON.stringify(listRes.body)}`,
+			);
 			return;
 		}
 
-		const jsonStart = listStdout.indexOf("{");
-		if (jsonStart === -1) {
+		const { deployments } = listRes.body as { deployments?: VercelDeployment[] };
+		const latest = deployments?.[0];
+		if (!latest) {
 			errors.push(`  ✗ No deployments found for [${env}]`);
 			return;
 		}
 
-		const data = JSON.parse(listStdout.slice(jsonStart));
-		const deployments = data.deployments as { url: string }[];
-		if (!deployments || deployments.length === 0) {
-			errors.push(`  ✗ No deployments found for [${env}]`);
+		const redeployRes = await vercelApi(client, "POST", "/v13/deployments?forceNew=1", {
+			deploymentId: latest.uid,
+			name: latest.name,
+			target: env === "production" ? "production" : undefined,
+			meta: { action: "redeploy" },
+		});
+		if (!redeployRes.ok) {
+			errors.push(
+				`  ✗ Redeploy failed [${env}]: ${redeployRes.status} ${JSON.stringify(redeployRes.body)}`,
+			);
 			return;
 		}
 
-		const latestUrl = deployments[0].url;
-
-		const redeployArgs = ["redeploy", latestUrl, "--no-wait", "--yes"];
-		if (project) redeployArgs.push("--project", project);
-
-		const redeployProc = Bun.spawn(["vercel", ...redeployArgs], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		const redeployStderr = await new Response(redeployProc.stderr).text();
-		const redeployExit = await redeployProc.exited;
-
-		if (redeployExit !== 0) {
-			errors.push(`  ✗ Redeploy failed [${env}]: ${redeployStderr.trim()}`);
-		} else {
-			console.log(`  ✓ Redeploy triggered [${env}]`);
-		}
+		const created = redeployRes.body as { url?: string };
+		console.log(`  ✓ Redeploy triggered [${env}]${created.url ? ` → https://${created.url}` : ""}`);
 	} catch (err) {
-		errors.push(`  ✗ Redeploy failed [${env}]: ${err}`);
+		errors.push(`  ✗ Redeploy failed [${env}]: ${err instanceof Error ? err.message : err}`);
 	}
 }
 
-async function backupVercelEnv(
-	env: string,
-	project: string | undefined,
-	configDir: string,
-): Promise<void> {
+/** Same line format as `vercel env pull` (KEY="value", newlines escaped) */
+function escapeEnvValue(value: string): string {
+	return value.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+}
+
+/**
+ * Write a `.env`-style snapshot of the environment's current variables.
+ * Sensitive variables are write-only on Vercel, so only their key and type
+ * are recorded; the file is a record of what was there, not a restore point
+ * for secrets.
+ */
+function backupVercelEnv(env: string, existing: VercelEnvVar[], configDir: string): void {
 	const backupDir = resolve(configDir, ".env-sync-backups");
 	if (!existsSync(backupDir)) {
 		mkdirSync(backupDir, { recursive: true });
@@ -342,28 +347,25 @@ async function backupVercelEnv(
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "").replace("T", "-").slice(0, 15);
 	const backupFile = resolve(backupDir, `vercel-${env}.${timestamp}.env`);
 
-	const args = ["env", "pull", backupFile, "--environment", env, "--yes"];
-	if (project) args.push("--project", project);
+	const entries = existing
+		.filter((e) => e.target.includes(env) && !e.gitBranch)
+		.sort((a, b) => a.key.localeCompare(b.key));
 
-	try {
-		const proc = Bun.spawn(["vercel", ...args], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		const exitCode = await proc.exited;
-
-		if (exitCode === 0) {
-			console.log(`  Backed up Vercel [${env}] → .env-sync-backups/vercel-${env}.${timestamp}.env`);
+	const lines = [`# Created by env-sync — Vercel [${env}] backup`];
+	for (const e of entries) {
+		if (e.value === undefined || e.type === "sensitive") {
+			lines.push(`# ${e.key} (${e.type ?? "unknown"}: value not readable via API)`);
 		} else {
-			const stderr = await new Response(proc.stderr).text();
-			console.warn(`  ⚠ Could not back up Vercel [${env}]: ${stderr.trim()}`);
+			lines.push(`${e.key}="${escapeEnvValue(e.value)}"`);
 		}
-	} catch {
-		console.warn(`  ⚠ Could not back up Vercel [${env}]`);
 	}
 
-	// Quiet the unused-import warning when this codepath is the only
-	// consumer of writeFileSync (kept for future debug fallbacks).
-	void writeFileSync;
+	try {
+		writeFileSync(backupFile, `${lines.join("\n")}\n`, { encoding: "utf-8", mode: 0o600 });
+		console.log(`  Backed up Vercel [${env}] → .env-sync-backups/vercel-${env}.${timestamp}.env`);
+	} catch (err) {
+		console.warn(
+			`  ⚠ Could not back up Vercel [${env}]: ${err instanceof Error ? err.message : err}`,
+		);
+	}
 }
