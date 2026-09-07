@@ -16,6 +16,7 @@ interface CapturedRequest {
 
 const originalFetch = globalThis.fetch;
 const originalHome = process.env.HOME;
+const originalXdg = process.env.XDG_CONFIG_HOME;
 const originalPath = process.env.PATH;
 let requests: CapturedRequest[];
 
@@ -23,11 +24,14 @@ beforeEach(() => {
 	rmSync(TMP, { recursive: true, force: true });
 	// The target reads the CLI token from the standard auth store and the
 	// project id from `.vercel/project.json`; both are relocated into TMP.
-	mkdirSync(join(HOME, "Library", "Application Support", "com.vercel.cli"), { recursive: true });
+	// XDG_CONFIG_HOME is honoured on every OS, so the test does not depend
+	// on the macOS or Linux default path.
+	mkdirSync(join(HOME, "xdg", "com.vercel.cli"), { recursive: true });
 	writeFileSync(
-		join(HOME, "Library", "Application Support", "com.vercel.cli", "auth.json"),
+		join(HOME, "xdg", "com.vercel.cli", "auth.json"),
 		JSON.stringify({ token: "test-token" }),
 	);
+	process.env.XDG_CONFIG_HOME = join(HOME, "xdg");
 	mkdirSync(join(PROJECT, ".vercel"), { recursive: true });
 	writeFileSync(
 		join(PROJECT, ".vercel", "project.json"),
@@ -56,6 +60,11 @@ beforeEach(() => {
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 	process.env.HOME = originalHome;
+	if (originalXdg === undefined) {
+		delete process.env.XDG_CONFIG_HOME;
+	} else {
+		process.env.XDG_CONFIG_HOME = originalXdg;
+	}
 	process.env.PATH = originalPath;
 	rmSync(TMP, { recursive: true, force: true });
 });
