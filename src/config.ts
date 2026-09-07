@@ -165,7 +165,8 @@ function validateGitHubTarget(
 	path: string,
 	groups: string[],
 ): GitHubTarget {
-	const secretType = (obj.secretType as string) ?? "actions";
+	// Only an omitted key means "default"; an explicit null is a config error.
+	const secretType = obj.secretType === undefined ? "actions" : obj.secretType;
 	if (secretType !== "actions" && secretType !== "dependabot") {
 		throw new Error(`${path}: github target '${name}' has invalid secretType '${secretType}'`);
 	}

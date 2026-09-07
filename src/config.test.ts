@@ -157,6 +157,27 @@ targets:
 		teardown();
 	});
 
+	test("rejects an explicit null secretType instead of defaulting it", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  ci:
+    X: "1"
+
+targets:
+  gh:
+    type: github
+    secretType: null
+    groups: [ci]
+`,
+		);
+
+		expect(() => loadConfig(path)).toThrow("invalid secretType 'null'");
+		teardown();
+	});
+
 	test("rejects target referencing unknown group", () => {
 		setup();
 		const path = writeYaml(
