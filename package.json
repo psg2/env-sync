@@ -12,6 +12,8 @@
 		"lint": "bunx --bun biome check src/",
 		"lint:fix": "bunx --bun biome check --write src/",
 		"format": "bunx --bun biome format --write src/",
+		"format:check": "bunx --bun biome format src/",
+		"typecheck": "tsc --noEmit",
 		"test": "bun test",
 		"prepublishOnly": "bun run build"
 	},
@@ -43,6 +45,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.7",
-		"@types/bun": "^1.2.4"
+		"@types/bun": "^1.2.4",
+		"typescript": "^5"
 	}
 }
