@@ -1,7 +1,7 @@
-#!/usr/bin/env bun
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { findConfigFile, loadConfig } from "./config";
+import { exec } from "./exec";
 import { sync } from "./sync";
 
 const HELP = `env-sync — Declarative env var management
@@ -181,11 +181,7 @@ async function checkPrerequisites(
 
 	// Check 1Password session
 	if (needsOp) {
-		const proc = Bun.spawn(["op", "account", "list"], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const exitCode = await proc.exited;
+		const { exitCode } = await exec("op", ["account", "list"]);
 		if (exitCode !== 0) {
 			console.error("✗ Not signed in to 1Password. Run: op signin");
 			process.exit(1);
@@ -194,9 +190,9 @@ async function checkPrerequisites(
 }
 
 async function assertCommand(cmd: string, description: string): Promise<void> {
-	const proc = Bun.spawn(["which", cmd], { stdout: "pipe", stderr: "pipe" });
-	const exitCode = await proc.exited;
-	if (exitCode !== 0) {
+	try {
+		await exec(cmd, ["--version"]);
+	} catch {
 		console.error(`✗ ${cmd} not found. Install: ${description}`);
 		process.exit(1);
 	}

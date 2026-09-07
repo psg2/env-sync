@@ -3,19 +3,23 @@
 	"version": "0.0.0",
 	"description": "Declarative env var management — 1Password → local files, Vercel, GitHub secrets",
 	"type": "module",
+	"packageManager": "pnpm@11.21.0",
+	"engines": {
+		"node": ">=24"
+	},
 	"bin": {
 		"env-sync": "./dist/cli.js"
 	},
 	"scripts": {
-		"build": "bun build src/cli.ts --outdir dist --target bun",
-		"dev": "bun src/cli.ts",
-		"lint": "bunx --bun biome check src/",
-		"lint:fix": "bunx --bun biome check --write src/",
-		"format": "bunx --bun biome format --write src/",
-		"format:check": "bunx --bun biome format src/",
+		"build": "tsup",
+		"dev": "tsx src/cli.ts",
+		"lint": "biome check src/",
+		"lint:fix": "biome check --write src/",
+		"format": "biome format --write src/",
+		"format:check": "biome format src/",
 		"typecheck": "tsc --noEmit",
-		"test": "bun test",
-		"prepublishOnly": "bun run build"
+		"test": "vitest run",
+		"prepublishOnly": "pnpm build"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -45,7 +49,10 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.7",
-		"@types/bun": "^1.2.4",
-		"typescript": "^5"
+		"@types/node": "^24",
+		"tsup": "^8.5.1",
+		"tsx": "^4.23.13",
+		"typescript": "^7",
+		"vitest": "^5.0.0"
 	}
 }

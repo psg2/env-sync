@@ -7,7 +7,13 @@ Define your env vars and secrets in `env-sync.yaml`, then sync them to local `.e
 ## Install
 
 ```bash
-bun add -g @psg2/env-sync
+pnpm add -g @psg2/env-sync
+```
+
+Or run it as a one-off without installing:
+
+```bash
+npx @psg2/env-sync
 ```
 
 ## Quick Start
@@ -128,6 +134,7 @@ Options:
 
 | Feature | Requires |
 |---------|----------|
+| Runtime | Node 24 or newer |
 | 1Password secrets | [`op` CLI](https://developer.1password.com/docs/cli) + `op signin` |
 | Vercel targets | `VERCEL_TOKEN` env var, or `vercel login` (CLI optional) |
 | GitHub targets | [`gh` CLI](https://cli.github.com) |

@@ -24,17 +24,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+          cache: pnpm
 
-      - run: bun install --frozen-lockfile
-      - run: bun run build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
 
       - name: Semantic Release
         env:

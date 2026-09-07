@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { describe, expect, test } from "vitest";
 import { findConfigFile, loadConfig } from "../config";
 
 const TMP = join(import.meta.dirname ?? ".", ".tmp-test-config");

@@ -1,3 +1,4 @@
+import { exec } from "../exec";
 import type { GitHubTarget, ResolvedVar, SyncResult } from "../types";
 
 export async function syncGitHub(
@@ -25,13 +26,7 @@ export async function syncGitHub(
 			if (target.environment) args.push("--env", target.environment);
 			if (target.secretType === "dependabot") args.push("--app", "dependabot");
 
-			const proc = Bun.spawn(["gh", ...args], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-
-			const stderr = await new Response(proc.stderr).text();
-			const exitCode = await proc.exited;
+			const { exitCode, stderr } = await exec("gh", args);
 
 			if (exitCode !== 0) {
 				errors.push(`  ✗ ${v.key}: ${stderr.trim()}`);
