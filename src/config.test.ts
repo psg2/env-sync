@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { findConfigFile, loadConfig } from "../config";
+import { findConfigFile, loadConfig } from "./config";
 
 const TMP = join(import.meta.dirname ?? ".", ".tmp-test-config");
 
@@ -199,6 +199,216 @@ targets:
 		teardown();
 	});
 
+	test("rejects an empty file", () => {
+		setup();
+		const path = writeYaml("env-sync.yaml", "");
+		expect(() => loadConfig(path)).toThrow("empty or not an object");
+		teardown();
+	});
+
+	test("rejects a config missing the targets section", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    X: "1"
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("missing or invalid 'targets'");
+		teardown();
+	});
+
+	test("rejects a target missing 'type'", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    X: "1"
+
+targets:
+  local:
+    groups: [dev]
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("missing 'type'");
+		teardown();
+	});
+
+	test("rejects a target with an unknown type", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    X: "1"
+
+targets:
+  local:
+    type: s3
+    groups: [dev]
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("unknown type 's3'");
+		teardown();
+	});
+
+	test("rejects a target whose 'groups' is not an array", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    X: "1"
+
+targets:
+  local:
+    type: file
+    path: .env
+    groups: dev
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("missing 'groups' array");
+		teardown();
+	});
+
+	test("rejects a file target missing 'path'", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    X: "1"
+
+targets:
+  local:
+    type: file
+    groups: [dev]
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("missing 'path'");
+		teardown();
+	});
+
+	test("rejects a vercel target with an empty 'environments' array", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  prod:
+    X: "1"
+
+targets:
+  v:
+    type: vercel
+    environments: []
+    groups: [prod]
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("missing 'environments' array");
+		teardown();
+	});
+
+	test("rejects a github target with an invalid secretType", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  ci:
+    TOKEN: secret123
+
+targets:
+  gh-secrets:
+    type: github
+    secretType: codespaces
+    groups: [ci]
+`,
+		);
+		expect(() => loadConfig(path)).toThrow("invalid secretType 'codespaces'");
+		teardown();
+	});
+
+	test("defaults a github target's secretType to 'actions' when omitted", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  ci:
+    TOKEN: secret123
+
+targets:
+  gh-secrets:
+    type: github
+    groups: [ci]
+`,
+		);
+		const { config } = loadConfig(path);
+		const target = config.targets["gh-secrets"];
+		expect(target.type).toBe("github");
+		if (target.type === "github") {
+			expect(target.secretType).toBe("actions");
+		}
+		teardown();
+	});
+
+	test("honors an explicit backup: false on a file target", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    X: "1"
+
+targets:
+  local:
+    type: file
+    path: .env
+    groups: [dev]
+    backup: false
+`,
+		);
+		const { config } = loadConfig(path);
+		const target = config.targets.local;
+		expect(target.type).toBe("file");
+		if (target.type === "file") {
+			expect(target.backup).toBe(false);
+		}
+		teardown();
+	});
+
+	test("stringifies non-string scalar values", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  dev:
+    PORT: 3000
+    DEBUG: true
+
+targets:
+  local:
+    type: file
+    path: .env
+    groups: [dev]
+`,
+		);
+		const { config } = loadConfig(path);
+		expect(config.groups.dev.PORT).toBe("3000");
+		expect(config.groups.dev.DEBUG).toBe("true");
+		teardown();
+	});
+
 	test("skips null var values", () => {
 		setup();
 		const path = writeYaml(
@@ -237,6 +447,24 @@ describe("findConfigFile", () => {
 	test("throws when not found", () => {
 		setup();
 		expect(() => findConfigFile(TMP)).toThrow("No env-sync.yaml found");
+		teardown();
+	});
+
+	test("also finds the .yml spelling", () => {
+		setup();
+		writeYaml("env-sync.yml", "groups: {}\ntargets: {}");
+		const found = findConfigFile(TMP);
+		expect(found).toBe(join(TMP, "env-sync.yml"));
+		teardown();
+	});
+
+	test("searches upward from a nested directory", () => {
+		setup();
+		writeYaml("env-sync.yaml", "groups: {}\ntargets: {}");
+		const nested = join(TMP, "a", "b");
+		mkdirSync(nested, { recursive: true });
+		const found = findConfigFile(nested);
+		expect(found).toBe(join(TMP, "env-sync.yaml"));
 		teardown();
 	});
 });
