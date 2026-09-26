@@ -38,10 +38,6 @@ export async function syncGitHub(
 		}
 	}
 
-	if (errors.length > 0) {
-		for (const e of errors) console.error(e);
-	}
-
 	const succeeded = vars.length - errors.length;
 	console.log(`  Done: ${succeeded}/${vars.length} secrets pushed to GitHub [${label}]`);
 
