@@ -1,4 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { sync } from "./sync";
 import type { Config } from "./types";
 
@@ -55,6 +57,46 @@ describe("sync", () => {
 			type: "file",
 			vars: 0,
 			errors: [],
+		});
+	});
+
+	describe("when a Vercel target cannot start", () => {
+		const unlinked = join(import.meta.dirname ?? ".", ".tmp-test-sync-unlinked");
+		const originalToken = process.env.VERCEL_TOKEN;
+
+		afterEach(() => {
+			vi.restoreAllMocks();
+			rmSync(unlinked, { recursive: true, force: true });
+			if (originalToken === undefined) delete process.env.VERCEL_TOKEN;
+			else process.env.VERCEL_TOKEN = originalToken;
+		});
+
+		test("prints why, not only a warning in the summary", async () => {
+			// A folder without .vercel/project.json: the target fails before
+			// it pushes anything.
+			mkdirSync(unlinked, { recursive: true });
+			process.env.VERCEL_TOKEN = "test-token";
+			const printed: string[] = [];
+			vi.spyOn(console, "error").mockImplementation((...args) => {
+				printed.push(args.join(" "));
+			});
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			const config: Config = {
+				groups: { prod: { APP_URL: "https://app.example.com" } },
+				targets: {
+					production: {
+						type: "vercel",
+						environments: ["production"],
+						groups: ["prod"],
+						project: "app",
+					},
+				},
+			};
+
+			const [result] = await sync(config, { configDir: unlinked });
+
+			expect(result.errors).toHaveLength(1);
+			expect(printed.join("\n")).toContain(".vercel/project.json not found");
 		});
 	});
 });

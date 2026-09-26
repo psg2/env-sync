@@ -253,10 +253,6 @@ export async function syncVercel(
 		}
 	}
 
-	if (errors.length > 0) {
-		for (const e of errors) console.error(e);
-	}
-
 	const succeeded = vars.length * target.environments.length - errors.length;
 	console.log(
 		`  Done: ${succeeded}/${vars.length * target.environments.length} vars pushed to Vercel [${envLabel}]`,

@@ -49,6 +49,10 @@ export async function sync(config: Config, opts: SyncOptions): Promise<SyncResul
 
 		// 3. Push to target
 		const result = await dispatch(name, target, resolved, opts);
+		// Printed here rather than in each target: a target that fails before
+		// it pushes anything (no token, unlinked folder) returns early, and its
+		// reason would otherwise only surface as a ⚠ in the summary.
+		for (const e of result.errors) console.error(e);
 		result.errors.push(...resolveErrors);
 		results.push(result);
 	}
