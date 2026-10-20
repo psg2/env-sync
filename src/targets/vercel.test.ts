@@ -163,6 +163,49 @@ describe("syncVercel", () => {
 		expect(requests).toEqual([]);
 	});
 
+	test("reads the token from globalConfig instead of the default auth store", async () => {
+		mkdirSync(join(HOME, ".config", "vercel-personal"), { recursive: true });
+		writeFileSync(
+			join(HOME, ".config", "vercel-personal", "auth.json"),
+			JSON.stringify({ token: "personal-token" }),
+		);
+		const target: VercelTarget = {
+			type: "vercel",
+			environments: ["production"],
+			groups: ["prod"],
+			globalConfig: "~/.config/vercel-personal",
+		};
+		const vars: ResolvedVar[] = [
+			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+		];
+
+		const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+		expect(result.errors).toEqual([]);
+		expect(requests.length).toBeGreaterThan(0);
+		for (const r of requests) {
+			expect(r.headers.authorization).toBe("Bearer personal-token");
+		}
+	});
+
+	test("does not fall back to the default auth store when globalConfig has no token", async () => {
+		const target: VercelTarget = {
+			type: "vercel",
+			environments: ["production"],
+			groups: ["prod"],
+			globalConfig: "~/.config/vercel-missing",
+		};
+		const vars: ResolvedVar[] = [
+			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+		];
+
+		const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+		expect(result.errors).toHaveLength(1);
+		expect(result.errors[0]).toContain("vercel-missing");
+		expect(requests).toEqual([]);
+	});
+
 	test("writes a backup of the environment before overwriting", async () => {
 		installFetch((method, pathname) => {
 			if (method === "GET" && /\/env$/.test(pathname)) {

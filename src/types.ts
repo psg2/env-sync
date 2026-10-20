@@ -27,6 +27,12 @@ export interface VercelTarget {
 	project?: string;
 	/** Trigger a redeploy after pushing env vars (default: false) */
 	redeploy?: boolean;
+	/**
+	 * Vercel CLI global config directory to read the token from, the same
+	 * directory `vercel --global-config <dir>` uses. `~` expands to the home
+	 * directory; relative paths resolve against the config file.
+	 */
+	globalConfig?: string;
 }
 
 export interface GitHubTarget {

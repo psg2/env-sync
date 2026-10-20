@@ -220,6 +220,28 @@ targets:
 		teardown();
 	});
 
+	test("rejects a non-string vercel globalConfig", () => {
+		setup();
+		const path = writeYaml(
+			"env-sync.yaml",
+			`
+groups:
+  prod:
+    X: "1"
+
+targets:
+  v:
+    type: vercel
+    environments: [production]
+    groups: [prod]
+    globalConfig: true
+`,
+		);
+
+		expect(() => loadConfig(path)).toThrow("invalid 'globalConfig'");
+		teardown();
+	});
+
 	test("rejects an empty file", () => {
 		setup();
 		const path = writeYaml("env-sync.yaml", "");

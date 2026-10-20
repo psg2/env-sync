@@ -150,12 +150,21 @@ function validateVercelTarget(
 			);
 		}
 	}
+	if (
+		obj.globalConfig !== undefined &&
+		(typeof obj.globalConfig !== "string" || !obj.globalConfig)
+	) {
+		throw new Error(
+			`${path}: vercel target '${name}' has invalid 'globalConfig' (expected a path)`,
+		);
+	}
 	return {
 		type: "vercel",
 		environments: obj.environments as string[],
 		groups,
 		project: obj.project ? String(obj.project) : undefined,
 		redeploy: obj.redeploy === true,
+		globalConfig: obj.globalConfig as string | undefined,
 	};
 }
 
