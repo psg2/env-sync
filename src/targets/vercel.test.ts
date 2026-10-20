@@ -175,7 +175,7 @@ describe("syncVercel", () => {
 			type: "vercel",
 			environments: ["production"],
 			groups: ["prod"],
-			globalConfig: "vercel-profile",
+			globalConfig: "~/.config/vercel-missing",
 		};
 		const vars: ResolvedVar[] = [
 			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
@@ -184,9 +184,35 @@ describe("syncVercel", () => {
 		const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
 
 		expect(result.errors).toHaveLength(1);
-		expect(result.errors[0]).toContain(join(PROJECT, "vercel-profile", "auth.json"));
+		expect(result.errors[0]).toContain(join(HOME, ".config", "vercel-missing", "auth.json"));
 		expect(requests).toEqual([]);
 	});
+
+	test.each(["vercel-profile", "./.vercel-profile", join(PROJECT, "profile")])(
+		"rejects globalConfig %s inside the project",
+		async (globalConfig) => {
+			mkdirSync(join(PROJECT, "vercel-profile"), { recursive: true });
+			writeFileSync(
+				join(PROJECT, "vercel-profile", "auth.json"),
+				JSON.stringify({ token: "repo" }),
+			);
+			const target: VercelTarget = {
+				type: "vercel",
+				environments: ["production"],
+				groups: ["prod"],
+				globalConfig,
+			};
+			const vars: ResolvedVar[] = [
+				{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+			];
+
+			const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+			expect(result.errors).toHaveLength(1);
+			expect(result.errors[0]).toContain("outside the project");
+			expect(requests).toEqual([]);
+		},
+	);
 
 	test("reports a clear error when no token is available", async () => {
 		rmSync(AUTH_FILE, { force: true });

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { ResolvedVar, SyncResult, VercelTarget } from "../types";
 
 // ── Why we don't use the Vercel CLI at all ──────────────────────────────────
@@ -47,10 +47,19 @@ function getVercelAuthToken(configDir: string, globalConfig?: string): string {
 	if (fromEnv) return fromEnv;
 
 	if (globalConfig) {
-		// No fallback to the default store: it may hold another account's token.
+		// A token file inside the repo would let a cloned repo send your 1Password
+		// secrets to its own Vercel account, so only paths in your home or absolute
+		// paths outside the project count. No fallback to the default store
+		// either: it may hold another account's token.
 		const dir = globalConfig.startsWith("~/")
 			? resolve(homedir(), globalConfig.slice(2))
-			: resolve(configDir, globalConfig);
+			: globalConfig;
+		const rel = relative(resolve(configDir), dir);
+		if (!isAbsolute(dir) || !rel.startsWith("..")) {
+			throw new Error(
+				`globalConfig '${globalConfig}' must be a ~/ or absolute path outside the project.`,
+			);
+		}
 		const token = readToken(resolve(dir, "auth.json"));
 		if (token) return token;
 		throw new Error(
