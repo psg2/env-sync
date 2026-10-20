@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { ResolvedVar, VercelTarget } from "../types";
@@ -188,31 +188,32 @@ describe("syncVercel", () => {
 		expect(requests).toEqual([]);
 	});
 
-	test.each(["vercel-profile", "./.vercel-profile", join(PROJECT, "profile")])(
-		"rejects globalConfig %s inside the project",
-		async (globalConfig) => {
-			mkdirSync(join(PROJECT, "vercel-profile"), { recursive: true });
-			writeFileSync(
-				join(PROJECT, "vercel-profile", "auth.json"),
-				JSON.stringify({ token: "repo" }),
-			);
-			const target: VercelTarget = {
-				type: "vercel",
-				environments: ["production"],
-				groups: ["prod"],
-				globalConfig,
-			};
-			const vars: ResolvedVar[] = [
-				{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
-			];
+	test.each([
+		"vercel-profile",
+		"./.vercel-profile",
+		join(PROJECT, "profile"),
+		join(PROJECT, "..dir"),
+		join(TMP, "link-to-project"),
+	])("rejects globalConfig %s inside the project", async (globalConfig) => {
+		mkdirSync(join(PROJECT, "vercel-profile"), { recursive: true });
+		writeFileSync(join(PROJECT, "vercel-profile", "auth.json"), JSON.stringify({ token: "repo" }));
+		symlinkSync(join(PROJECT, "vercel-profile"), join(TMP, "link-to-project"));
+		const target: VercelTarget = {
+			type: "vercel",
+			environments: ["production"],
+			groups: ["prod"],
+			globalConfig,
+		};
+		const vars: ResolvedVar[] = [
+			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+		];
 
-			const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+		const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
 
-			expect(result.errors).toHaveLength(1);
-			expect(result.errors[0]).toContain("outside the project");
-			expect(requests).toEqual([]);
-		},
-	);
+		expect(result.errors).toHaveLength(1);
+		expect(result.errors[0]).toContain("outside the project");
+		expect(requests).toEqual([]);
+	});
 
 	test("reports a clear error when no token is available", async () => {
 		rmSync(AUTH_FILE, { force: true });
