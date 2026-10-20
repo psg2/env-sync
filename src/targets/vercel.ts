@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ResolvedVar, SyncResult, VercelTarget } from "../types";
 
 // ── Why we don't use the Vercel CLI at all ──────────────────────────────────
@@ -42,6 +42,20 @@ function readToken(path: string): string | undefined {
 	}
 }
 
+// Symlinks and paths like /proc/self/cwd would otherwise pass a lexical check.
+function realPath(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch {
+		return resolve(path);
+	}
+}
+
+function isInside(parent: string, child: string): boolean {
+	const rel = relative(parent, child);
+	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
 function getVercelAuthToken(configDir: string, globalConfig?: string): string {
 	const fromEnv = process.env.VERCEL_TOKEN;
 	if (fromEnv) return fromEnv;
@@ -54,8 +68,7 @@ function getVercelAuthToken(configDir: string, globalConfig?: string): string {
 		const dir = globalConfig.startsWith("~/")
 			? resolve(homedir(), globalConfig.slice(2))
 			: globalConfig;
-		const rel = relative(resolve(configDir), dir);
-		if (!isAbsolute(dir) || !rel.startsWith("..")) {
+		if (!isAbsolute(dir) || isInside(realPath(configDir), realPath(dir))) {
 			throw new Error(
 				`globalConfig '${globalConfig}' must be a ~/ or absolute path outside the project.`,
 			);
