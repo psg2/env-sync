@@ -42,10 +42,11 @@ function readToken(path: string): string | undefined {
 	}
 }
 
-// Symlinks and paths like /proc/self/cwd would otherwise pass a lexical check.
+// Symlinks, /proc/self/cwd and, on macOS, a path in another letter case would
+// otherwise pass a lexical check; the native call returns the on-disk case.
 function realPath(path: string): string {
 	try {
-		return realpathSync(path);
+		return realpathSync.native(path);
 	} catch {
 		return resolve(path);
 	}
