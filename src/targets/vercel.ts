@@ -34,9 +34,29 @@ interface VercelDeployment {
 	url: string;
 }
 
-function getVercelAuthToken(): string {
+function readToken(path: string): string | undefined {
+	try {
+		return (JSON.parse(readFileSync(path, "utf8")) as { token?: string }).token || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function getVercelAuthToken(configDir: string, globalConfig?: string): string {
 	const fromEnv = process.env.VERCEL_TOKEN;
 	if (fromEnv) return fromEnv;
+
+	if (globalConfig) {
+		// No fallback to the default store: it may hold another account's token.
+		const dir = globalConfig.startsWith("~/")
+			? resolve(homedir(), globalConfig.slice(2))
+			: resolve(configDir, globalConfig);
+		const token = readToken(resolve(dir, "auth.json"));
+		if (token) return token;
+		throw new Error(
+			`Vercel token not found in ${dir}/auth.json. Set VERCEL_TOKEN, or run \`vercel login --global-config ${globalConfig}\`.`,
+		);
+	}
 
 	// Standard locations per OS — same paths the Vercel CLI uses to
 	// store the token after `vercel login`.
@@ -55,13 +75,8 @@ function getVercelAuthToken(): string {
 	].filter(Boolean) as string[];
 
 	for (const path of candidates) {
-		if (!existsSync(path)) continue;
-		try {
-			const raw = JSON.parse(readFileSync(path, "utf8")) as { token?: string };
-			if (raw.token) return raw.token;
-		} catch {
-			// fall through to next candidate
-		}
+		const token = readToken(path);
+		if (token) return token;
 	}
 
 	throw new Error(
@@ -199,7 +214,7 @@ export async function syncVercel(
 
 	let client: VercelClient;
 	try {
-		const token = getVercelAuthToken();
+		const token = getVercelAuthToken(configDir, target.globalConfig);
 		const info = getProjectInfo(configDir, target.project);
 		client = { token, projectId: info.projectId, teamId: info.teamId };
 	} catch (err) {

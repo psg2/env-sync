@@ -98,9 +98,10 @@ targets:
     groups: [prod-secrets]
     project: my-app                     # Optional: expected name of the linked project
     redeploy: true                      # Optional (default: false)
+    globalConfig: ~/.config/vercel-me   # Optional: CLI profile dir (vercel --global-config)
 ```
 
-**Authentication:** the token is read from `VERCEL_TOKEN` first, then from the Vercel CLI auth store written by `vercel login` (e.g. `~/Library/Application Support/com.vercel.cli/auth.json` on macOS, `~/.local/share/com.vercel.cli/auth.json` on Linux, `%APPDATA%/com.vercel.cli/auth.json` on Windows). The project and team ids come from `.vercel/project.json`, created by `vercel link` (or written by hand with `projectId` and `orgId`). The folder that holds `env-sync.yaml` must be linked; `project:` does not look a project up by name, it only warns when the linked project has a different name. The `vercel` CLI itself is optional at runtime — it's only needed once, to produce the token and the linked project file.
+**Authentication:** the token is read from `VERCEL_TOKEN` first, then from `<globalConfig>/auth.json` when the target sets `globalConfig` (the dir passed to `vercel --global-config`, `~/` or relative to `env-sync.yaml`; no fallback, so a second account's profile is never mixed up with the default one), then from the Vercel CLI auth store written by `vercel login` (e.g. `~/Library/Application Support/com.vercel.cli/auth.json` on macOS, `~/.local/share/com.vercel.cli/auth.json` on Linux, `%APPDATA%/com.vercel.cli/auth.json` on Windows). The project and team ids come from `.vercel/project.json`, created by `vercel link` (or written by hand with `projectId` and `orgId`). The folder that holds `env-sync.yaml` must be linked; `project:` does not look a project up by name, it only warns when the linked project has a different name. The `vercel` CLI itself is optional at runtime — it's only needed once, to produce the token and the linked project file.
 
 #### GitHub
 

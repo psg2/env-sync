@@ -156,6 +156,7 @@ function validateVercelTarget(
 		groups,
 		project: obj.project ? String(obj.project) : undefined,
 		redeploy: obj.redeploy === true,
+		globalConfig: obj.globalConfig ? String(obj.globalConfig) : undefined,
 	};
 }
 

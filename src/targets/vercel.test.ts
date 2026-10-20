@@ -145,6 +145,49 @@ describe("syncVercel", () => {
 		}
 	});
 
+	test("reads the token from globalConfig instead of the default store", async () => {
+		mkdirSync(join(HOME, ".config", "vercel-personal"), { recursive: true });
+		writeFileSync(
+			join(HOME, ".config", "vercel-personal", "auth.json"),
+			JSON.stringify({ token: "personal-token" }),
+		);
+		const target: VercelTarget = {
+			type: "vercel",
+			environments: ["production"],
+			groups: ["prod"],
+			globalConfig: "~/.config/vercel-personal",
+		};
+		const vars: ResolvedVar[] = [
+			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+		];
+
+		const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+		expect(result.errors).toEqual([]);
+		expect(requests.length).toBeGreaterThan(0);
+		for (const r of requests) {
+			expect(r.headers.authorization).toBe("Bearer personal-token");
+		}
+	});
+
+	test("does not fall back to the default store when globalConfig has no token", async () => {
+		const target: VercelTarget = {
+			type: "vercel",
+			environments: ["production"],
+			groups: ["prod"],
+			globalConfig: "vercel-profile",
+		};
+		const vars: ResolvedVar[] = [
+			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+		];
+
+		const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+		expect(result.errors).toHaveLength(1);
+		expect(result.errors[0]).toContain(join(PROJECT, "vercel-profile", "auth.json"));
+		expect(requests).toEqual([]);
+	});
+
 	test("reports a clear error when no token is available", async () => {
 		rmSync(AUTH_FILE, { force: true });
 		const target: VercelTarget = {
