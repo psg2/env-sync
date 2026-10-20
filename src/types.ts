@@ -27,6 +27,8 @@ export interface VercelTarget {
 	project?: string;
 	/** Trigger a redeploy after pushing env vars (default: false) */
 	redeploy?: boolean;
+	/** Vercel CLI global config dir to read auth.json from, like `vercel --global-config` */
+	globalConfig?: string;
 }
 
 export interface GitHubTarget {
