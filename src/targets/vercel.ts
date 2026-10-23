@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ResolvedVar, SyncResult, VercelTarget } from "../types";
@@ -34,12 +41,77 @@ interface VercelDeployment {
 	url: string;
 }
 
-function readToken(path: string): string | undefined {
+interface AuthConfig {
+	token?: string;
+	refreshToken?: string;
+	/** Unix seconds. */
+	expiresAt?: number;
+	[key: string]: unknown;
+}
+
+function readAuthConfig(path: string): AuthConfig | undefined {
 	try {
-		return (JSON.parse(readFileSync(path, "utf8")) as { token?: string }).token || undefined;
+		return JSON.parse(readFileSync(path, "utf8")) as AuthConfig;
 	} catch {
 		return undefined;
 	}
+}
+
+// The OAuth client and endpoint the Vercel CLI itself refreshes with
+// (VERCEL_CLI_CLIENT_ID in the `vercel` package, token_endpoint of
+// https://vercel.com/.well-known/openid-configuration).
+const VERCEL_CLI_CLIENT_ID = "cl_HYyOPBNtFMfHhaUn9L4QPfTZz6TP47bp";
+const VERCEL_TOKEN_ENDPOINT = "https://api.vercel.com/login/oauth/token";
+// A sync makes many calls; a token about to expire would die midway.
+const EXPIRY_MARGIN_SECONDS = 5 * 60;
+
+/**
+ * The CLI's access token from `vercel login` lives about an hour and only the
+ * CLI refreshes it, when it runs. Refresh it here the same way, and write the
+ * new tokens back: the refresh token rotates, so keeping the old one would log
+ * the CLI out.
+ */
+async function readToken(path: string): Promise<string | undefined> {
+	const config = readAuthConfig(path);
+	if (!config?.token) return undefined;
+	const now = Math.floor(Date.now() / 1000);
+	if (typeof config.expiresAt !== "number" || config.expiresAt > now + EXPIRY_MARGIN_SECONDS) {
+		return config.token;
+	}
+	if (!config.refreshToken) {
+		throw new Error(`Vercel login in ${path} expired. Run \`vercel login\` again.`);
+	}
+
+	const res = await fetch(VERCEL_TOKEN_ENDPOINT, {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({
+			client_id: VERCEL_CLI_CLIENT_ID,
+			grant_type: "refresh_token",
+			refresh_token: config.refreshToken,
+		}),
+	});
+	const tokens = (await res.json().catch(() => ({}))) as {
+		access_token?: string;
+		expires_in?: number;
+		refresh_token?: string;
+	};
+	if (!res.ok || !tokens.access_token || typeof tokens.expires_in !== "number") {
+		throw new Error(
+			`Vercel login in ${path} expired and could not be refreshed (${res.status}). Run \`vercel login\` again.`,
+		);
+	}
+
+	const refreshed: AuthConfig = {
+		...config,
+		token: tokens.access_token,
+		expiresAt: now + tokens.expires_in,
+		refreshToken: tokens.refresh_token ?? config.refreshToken,
+	};
+	const tmp = `${path}.${process.pid}.tmp`;
+	writeFileSync(tmp, `${JSON.stringify(refreshed, null, 2)}\n`, { mode: 0o600 });
+	renameSync(tmp, path);
+	return refreshed.token;
 }
 
 // Symlinks, /proc/self/cwd and, on macOS, a path in another letter case would
@@ -57,7 +129,7 @@ function isInside(parent: string, child: string): boolean {
 	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-function getVercelAuthToken(configDir: string, globalConfig?: string): string {
+async function getVercelAuthToken(configDir: string, globalConfig?: string): Promise<string> {
 	const fromEnv = process.env.VERCEL_TOKEN;
 	if (fromEnv) return fromEnv;
 
@@ -74,7 +146,7 @@ function getVercelAuthToken(configDir: string, globalConfig?: string): string {
 				`globalConfig '${globalConfig}' must be a ~/ or absolute path outside the project.`,
 			);
 		}
-		const token = readToken(resolve(dir, "auth.json"));
+		const token = await readToken(resolve(dir, "auth.json"));
 		if (token) return token;
 		throw new Error(
 			`Vercel token not found in ${dir}/auth.json. Set VERCEL_TOKEN, or run \`vercel login --global-config ${globalConfig}\`.`,
@@ -98,7 +170,7 @@ function getVercelAuthToken(configDir: string, globalConfig?: string): string {
 	].filter(Boolean) as string[];
 
 	for (const path of candidates) {
-		const token = readToken(path);
+		const token = await readToken(path);
 		if (token) return token;
 	}
 
@@ -237,7 +309,7 @@ export async function syncVercel(
 
 	let client: VercelClient;
 	try {
-		const token = getVercelAuthToken(configDir, target.globalConfig);
+		const token = await getVercelAuthToken(configDir, target.globalConfig);
 		const info = getProjectInfo(configDir, target.project);
 		client = { token, projectId: info.projectId, teamId: info.teamId };
 	} catch (err) {

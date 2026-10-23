@@ -35,9 +35,12 @@ function installFetch(respond: Responder): void {
 		const url = new URL(String(input));
 		const method = init?.method ?? "GET";
 		const headers = Object.fromEntries(new Headers(init?.headers).entries());
-		const body = init?.body
-			? (JSON.parse(String(init.body)) as Record<string, unknown>)
-			: undefined;
+		const body =
+			init?.body instanceof URLSearchParams
+				? Object.fromEntries(init.body)
+				: init?.body
+					? (JSON.parse(String(init.body)) as Record<string, unknown>)
+					: undefined;
 		requests.push({ method, url: url.toString(), headers, body });
 
 		const result = respond(method, url.pathname, url);
@@ -213,6 +216,101 @@ describe("syncVercel", () => {
 		expect(result.errors).toHaveLength(1);
 		expect(result.errors[0]).toContain("outside the project");
 		expect(requests).toEqual([]);
+	});
+
+	describe("an expired CLI login", () => {
+		const PROFILE = join(HOME, ".config", "vercel-personal");
+		const PROFILE_AUTH = join(PROFILE, "auth.json");
+		const target: VercelTarget = {
+			type: "vercel",
+			environments: ["production"],
+			groups: ["prod"],
+			globalConfig: "~/.config/vercel-personal",
+		};
+		const vars: ResolvedVar[] = [
+			{ key: "APP_URL", value: "https://app.example.com", source: "https://app.example.com" },
+		];
+		const past = () => Math.floor(Date.now() / 1000) - 60;
+
+		beforeEach(() => {
+			mkdirSync(PROFILE, { recursive: true });
+		});
+
+		test("is refreshed, used and saved back for the CLI", async () => {
+			writeFileSync(
+				PROFILE_AUTH,
+				JSON.stringify({
+					"// Note": "kept",
+					token: "stale",
+					refreshToken: "refresh-1",
+					expiresAt: past(),
+				}),
+			);
+			installFetch((method, pathname) => {
+				if (pathname === "/login/oauth/token") {
+					return {
+						status: 200,
+						body: {
+							access_token: "fresh",
+							token_type: "Bearer",
+							expires_in: 3600,
+							refresh_token: "refresh-2",
+						},
+					};
+				}
+				return defaultResponder(method, pathname);
+			});
+
+			const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+			expect(result.errors).toEqual([]);
+			const [refresh, ...api] = requests;
+			expect(refresh.body).toMatchObject({
+				grant_type: "refresh_token",
+				refresh_token: "refresh-1",
+			});
+			expect(api.length).toBeGreaterThan(0);
+			for (const r of api) expect(r.headers.authorization).toBe("Bearer fresh");
+			const saved = JSON.parse(readFileSync(PROFILE_AUTH, "utf8"));
+			expect(saved).toMatchObject({ "// Note": "kept", token: "fresh", refreshToken: "refresh-2" });
+			expect(saved.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
+		});
+
+		test("is not refreshed while it is still valid", async () => {
+			writeFileSync(
+				PROFILE_AUTH,
+				JSON.stringify({
+					token: "valid",
+					refreshToken: "refresh-1",
+					expiresAt: Math.floor(Date.now() / 1000) + 3600,
+				}),
+			);
+
+			const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+			expect(result.errors).toEqual([]);
+			expect(requests.some((r) => r.url.includes("/login/oauth/token"))).toBe(false);
+			for (const r of requests) expect(r.headers.authorization).toBe("Bearer valid");
+		});
+
+		test("that can't be refreshed asks for a new login and pushes nothing", async () => {
+			writeFileSync(
+				PROFILE_AUTH,
+				JSON.stringify({ token: "stale", refreshToken: "revoked", expiresAt: past() }),
+			);
+			installFetch((method, pathname) =>
+				pathname === "/login/oauth/token"
+					? { status: 400, body: { error: "invalid_grant" } }
+					: defaultResponder(method, pathname),
+			);
+
+			const result = await syncVercel("production", target, vars, PROJECT, { dryRun: false });
+
+			expect(result.errors).toHaveLength(1);
+			expect(result.errors[0]).toContain("vercel login");
+			expect(requests.map((r) => new URL(r.url).pathname)).toEqual(["/login/oauth/token"]);
+			expect(JSON.parse(readFileSync(PROFILE_AUTH, "utf8")).refreshToken).toBe("revoked");
+		});
 	});
 
 	test("reports a clear error when no token is available", async () => {
