@@ -109,7 +109,8 @@ async function readToken(path: string): Promise<string | undefined> {
 		refreshToken: tokens.refresh_token ?? config.refreshToken,
 	};
 	const tmp = `${path}.${process.pid}.tmp`;
-	writeFileSync(tmp, `${JSON.stringify(refreshed, null, 2)}\n`, { mode: 0o600 });
+	// "wx" refuses a file or symlink already at the temp path.
+	writeFileSync(tmp, `${JSON.stringify(refreshed, null, 2)}\n`, { mode: 0o600, flag: "wx" });
 	renameSync(tmp, path);
 	return refreshed.token;
 }
